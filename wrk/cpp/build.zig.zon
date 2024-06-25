@@ -1,10 +1,20 @@
 .{
     .name = "cpp-beast",
     .version = "0.1.0",
+    .min_zig_version = "0.13.0",
     .dependencies = .{
         .beast = .{
-            .url = "https://github.com/kassane/beast/archive/df69ba4d48fbe874730f6a28e9528d9ef7a9547c.tar.gz",
-            .hash = "1220548f8727394522081ab48ed2f7111c20fa5f051ff287ec3c3f82340faa5d68c2",
+            .url = "git+https://github.com/kassane/beast#aa55fbd548481bf781ba9f669cc999fd05c2bbdd",
+            .hash = "1220fdca544522c4ac441097559c7523931f412918a3532d8779be605e871a76f016",
+        },
+        .lexical_cast = .{
+            .url = "git+https://github.com/boostorg/lexical_cast#7861401ac434a4b5fb00d784fd35c812767d9111",
+            .hash = "1220f45b61c8d5f28e36671d83c01ac5fddd51a123f8929951371cd858e956bc4c94",
+        },
+        .integer = .{
+            .url = "git+https://github.com/boostorg/integer#c37a3402beff5da04790d054bd7292920b433046",
+            .hash = "12200c5057e038ca6be7ca5c6847b6fbe72da5e495cc2fb04c9e1413329452a391d4",
         },
     },
+    .paths = .{""},
 }
