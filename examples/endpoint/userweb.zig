@@ -8,8 +8,8 @@ const User = Users.User;
 pub const Self = @This();
 
 alloc: std.mem.Allocator = undefined,
-endpoint: zap.SimpleEndpoint = undefined,
-users: Users = undefined,
+ep: zap.Endpoint = undefined,
+_users: Users = undefined,
 
 pub fn init(
     a: std.mem.Allocator,
@@ -17,43 +17,45 @@ pub fn init(
 ) Self {
     return .{
         .alloc = a,
-        .users = Users.init(a),
-        .endpoint = zap.SimpleEndpoint.init(.{
+        ._users = Users.init(a),
+        .ep = zap.Endpoint.init(.{
             .path = user_path,
             .get = getUser,
             .post = postUser,
             .put = putUser,
             .patch = putUser,
             .delete = deleteUser,
+            .options = optionsUser,
         }),
     };
 }
 
 pub fn deinit(self: *Self) void {
-    self.users.deinit();
+    self._users.deinit();
 }
 
-pub fn getUsers(self: *Self) *Users {
-    return &self.users;
+pub fn users(self: *Self) *Users {
+    return &self._users;
 }
 
-pub fn getUserEndpoint(self: *Self) *zap.SimpleEndpoint {
-    return &self.endpoint;
+pub fn endpoint(self: *Self) *zap.Endpoint {
+    return &self.ep;
 }
 
 fn userIdFromPath(self: *Self, path: []const u8) ?usize {
-    if (path.len >= self.endpoint.settings.path.len + 2) {
-        if (path[self.endpoint.settings.path.len] != '/') {
+    if (path.len >= self.ep.settings.path.len + 2) {
+        if (path[self.ep.settings.path.len] != '/') {
             return null;
         }
-        const idstr = path[self.endpoint.settings.path.len + 1 ..];
+        const idstr = path[self.ep.settings.path.len + 1 ..];
         return std.fmt.parseUnsigned(usize, idstr, 10) catch null;
     }
     return null;
 }
 
-fn getUser(e: *zap.SimpleEndpoint, r: zap.SimpleRequest) void {
-    const self = @fieldParentPtr(Self, "endpoint", e);
+fn getUser(e: *zap.Endpoint, r: zap.Request) void {
+    const self: *Self = @fieldParentPtr("ep", e);
+
     if (r.path) |path| {
         // /users
         if (path.len == e.settings.path.len) {
@@ -61,7 +63,7 @@ fn getUser(e: *zap.SimpleEndpoint, r: zap.SimpleRequest) void {
         }
         var jsonbuf: [256]u8 = undefined;
         if (self.userIdFromPath(path)) |id| {
-            if (self.users.get(id)) |user| {
+            if (self._users.get(id)) |user| {
                 if (zap.stringifyBuf(&jsonbuf, user, .{})) |json| {
                     r.sendJson(json) catch return;
                 }
@@ -70,8 +72,8 @@ fn getUser(e: *zap.SimpleEndpoint, r: zap.SimpleRequest) void {
     }
 }
 
-fn listUsers(self: *Self, r: zap.SimpleRequest) void {
-    if (self.users.toJSON()) |json| {
+fn listUsers(self: *Self, r: zap.Request) void {
+    if (self._users.toJSON()) |json| {
         defer self.alloc.free(json);
         r.sendJson(json) catch return;
     } else |err| {
@@ -79,13 +81,13 @@ fn listUsers(self: *Self, r: zap.SimpleRequest) void {
     }
 }
 
-fn postUser(e: *zap.SimpleEndpoint, r: zap.SimpleRequest) void {
-    const self = @fieldParentPtr(Self, "endpoint", e);
+fn postUser(e: *zap.Endpoint, r: zap.Request) void {
+    const self: *Self = @fieldParentPtr("ep", e);
     if (r.body) |body| {
-        var maybe_user: ?std.json.Parsed(User) = std.json.parseFromSlice(User, self.alloc, body, .{}) catch null;
+        const maybe_user: ?std.json.Parsed(User) = std.json.parseFromSlice(User, self.alloc, body, .{}) catch null;
         if (maybe_user) |u| {
             defer u.deinit();
-            if (self.users.addByName(u.value.first_name, u.value.last_name)) |id| {
+            if (self._users.addByName(u.value.first_name, u.value.last_name)) |id| {
                 var jsonbuf: [128]u8 = undefined;
                 if (zap.stringifyBuf(&jsonbuf, .{ .status = "OK", .id = id }, .{})) |json| {
                     r.sendJson(json) catch return;
@@ -98,17 +100,17 @@ fn postUser(e: *zap.SimpleEndpoint, r: zap.SimpleRequest) void {
     }
 }
 
-fn putUser(e: *zap.SimpleEndpoint, r: zap.SimpleRequest) void {
-    const self = @fieldParentPtr(Self, "endpoint", e);
+fn putUser(e: *zap.Endpoint, r: zap.Request) void {
+    const self: *Self = @fieldParentPtr("ep", e);
     if (r.path) |path| {
         if (self.userIdFromPath(path)) |id| {
-            if (self.users.get(id)) |_| {
+            if (self._users.get(id)) |_| {
                 if (r.body) |body| {
-                    var maybe_user: ?std.json.Parsed(User) = std.json.parseFromSlice(User, self.alloc, body, .{}) catch null;
+                    const maybe_user: ?std.json.Parsed(User) = std.json.parseFromSlice(User, self.alloc, body, .{}) catch null;
                     if (maybe_user) |u| {
                         defer u.deinit();
                         var jsonbuf: [128]u8 = undefined;
-                        if (self.users.update(id, u.value.first_name, u.value.last_name)) {
+                        if (self._users.update(id, u.value.first_name, u.value.last_name)) {
                             if (zap.stringifyBuf(&jsonbuf, .{ .status = "OK", .id = id }, .{})) |json| {
                                 r.sendJson(json) catch return;
                             }
@@ -124,12 +126,12 @@ fn putUser(e: *zap.SimpleEndpoint, r: zap.SimpleRequest) void {
     }
 }
 
-fn deleteUser(e: *zap.SimpleEndpoint, r: zap.SimpleRequest) void {
-    const self = @fieldParentPtr(Self, "endpoint", e);
+fn deleteUser(e: *zap.Endpoint, r: zap.Request) void {
+    const self: *Self = @fieldParentPtr("ep", e);
     if (r.path) |path| {
         if (self.userIdFromPath(path)) |id| {
             var jsonbuf: [128]u8 = undefined;
-            if (self.users.delete(id)) {
+            if (self._users.delete(id)) {
                 if (zap.stringifyBuf(&jsonbuf, .{ .status = "OK", .id = id }, .{})) |json| {
                     r.sendJson(json) catch return;
                 }
@@ -140,4 +142,12 @@ fn deleteUser(e: *zap.SimpleEndpoint, r: zap.SimpleRequest) void {
             }
         }
     }
+}
+
+fn optionsUser(e: *zap.Endpoint, r: zap.Request) void {
+    _ = e;
+    r.setHeader("Access-Control-Allow-Origin", "*") catch return;
+    r.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS") catch return;
+    r.setStatus(zap.StatusCode.no_content);
+    r.markAsFinished(true);
 }
